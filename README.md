@@ -1,6 +1,6 @@
-# esp32-T-Journal-camera
+# ESP32 T-Journal Camera
 
-TTGO ESP32 T-Journal camera test
+PlatformIO implementation for test a ESP32 TTGO T-Journal camera hardware module.
 
 ## WiFi credentials
 
@@ -11,4 +11,12 @@ export PIO_WIFI_PASSWORD='your_password'
 export PIO_WIFI_SSID='your_wifi_network'
 ```
 
+## Build and upload
 
+Then connect your device to USB and compiling and uploading the firmware with:
+
+```shell
+pio run --target upload
+```
+
+In the display you should have the camera IP, you can access to it via any browser.
