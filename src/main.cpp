@@ -1,7 +1,6 @@
+#include <Arduino.h>
+#include <EspNowJoystick.hpp>
 #include "OV2640.h"
-#include <WiFi.h>
-#include <WebServer.h>
-#include <WiFiClient.h>
 
 #define ENABLE_OLED //if want use oled ,turn on thi macro
 
@@ -13,72 +12,27 @@
 SSD1306Wire display(OLED_ADDRESS, I2C_SDA, I2C_SCL, GEOMETRY_128_32);
 #endif
 
+EspNowJoystick joystick;
+JoystickMessage jm;
+bool receiverConnected;
+
 OV2640 cam;
-WebServer server(80);
+uint32_t frames = 0; 
 
-const char *ssid =     WIFI_SSID;         // Put your SSID here
-const char *password = WIFI_PASS;     // Put your PASSWORD here
-
-void handle_jpg_stream(void)
-{
-  WiFiClient client = server.client();
-  String response = "HTTP/1.1 200 OK\r\n";
-  response += "Content-Type: multipart/x-mixed-replace; boundary=frame\r\n\r\n";
-  server.sendContent(response);
-
-  while (1)
-  {
-    cam.run();
-    if (!client.connected())
-      break;
-    response = "--frame\r\n";
-    response += "Content-Type: image/jpeg\r\n\r\n";
-    server.sendContent(response);
-
-    client.write((char *)cam.getfb(), cam.getSize());
-    server.sendContent("\r\n");
-    if (!client.connected())
-      break;
-  }
-}
-
-void handle_jpg(void)
-{
-  WiFiClient client = server.client();
-
-  cam.run();
-  if (!client.connected())
-  {
-    Serial.println("fail ... \n");
-    return;
-  }
-  String response = "HTTP/1.1 200 OK\r\n";
-  response += "Content-disposition: inline; filename=capture.jpg\r\n";
-  response += "Content-type: image/jpeg\r\n\r\n";
-  server.sendContent(response);
-  client.write((char *)cam.getfb(), cam.getSize());
-}
-
-void handleNotFound()
-{
-  String message = "Server is running!\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  server.send(200, "text/plain", message);
-}
+// callback to telemetries values (not mandatory)
+class MyTelemetryCallbacks : public EspNowTelemetryCallbacks{
+    void onTelemetryMsg(TelemetryMessage tm){
+        Serial.println("Telemetry msg received");
+        receiverConnected = tm.e1;
+    };
+    void onError(const char *msg){
+    };
+};
 
 void setup()
 {
   Serial.begin(115200);
-  while (!Serial)
-  {
-    ;
-  }
+  delay(2000);
 
   camera_config_t camera_config;
   camera_config.ledc_channel = LEDC_CHANNEL_0;
@@ -104,34 +58,40 @@ void setup()
 
   cam.init(camera_config);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED)
-  {
-    delay(500);
-    Serial.print(F("."));
-  }
-  Serial.println(F("WiFi connected"));
-  Serial.println("");
-  Serial.println(WiFi.localIP());
+  joystick.setTelemetryCallbacks(new MyTelemetryCallbacks());
+  jm = joystick.newJoystickMsg();
+  joystick.init();
 
 #ifdef ENABLE_OLED
   display.init();
   display.flipScreenVertically();
-  display.setFont(ArialMT_Plain_16);
+  display.setFont(ArialMT_Plain_10);
   display.setTextAlignment(TEXT_ALIGN_CENTER);
-  display.drawString(128 / 2, 32 / 2, WiFi.localIP().toString());
+  display.drawString(128 / 2, 32 / 2, "ESPNOW READY");
   display.display();
 #endif
-
-  server.on("/", HTTP_GET, handle_jpg_stream);
-  server.on("/jpg", HTTP_GET, handle_jpg);
-  server.onNotFound(handleNotFound);
-  server.begin();
 }
 
-void loop()
-{
-  server.handleClient();
+
+void displayFrameRate(){
+  static uint32_t framets = 0;
+  if (millis() - framets > 1000){
+    framets = millis();
+    display.clear();
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(128 / 2, 32 / 2, String(frames) + " fps");
+    display.display();
+    frames = 0;
+  }
 }
 
+void loop() {
+    frames++;
+    cam.run();
+    // client.write((char *)cam.getfb(), cam.getSize());
+    cam.getfb();
+    jm.ax = cam.getSize();
+    joystick.sendJoystickMsg(jm);
+    displayFrameRate();
+}
