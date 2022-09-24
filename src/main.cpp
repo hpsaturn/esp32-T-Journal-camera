@@ -14,10 +14,24 @@ SSD1306Wire display(OLED_ADDRESS, I2C_SDA, I2C_SCL, GEOMETRY_128_32);
 #endif
 
 OV2640 cam;
+uint32_t frames;
 WebServer server(80);
 
 const char *ssid =     WIFI_SSID;         // Put your SSID here
 const char *password = WIFI_PASS;     // Put your PASSWORD here
+
+void displayFrameRate(){
+  static uint32_t framets = 0;
+  if (millis() - framets > 1000){
+    framets = millis();
+    display.clear();
+    display.setFont(ArialMT_Plain_10);
+    display.setTextAlignment(TEXT_ALIGN_CENTER);
+    display.drawString(128 / 2, 32 / 2, String(frames) + " fps");
+    display.display();
+    frames = 0;
+  }
+}
 
 void handle_jpg_stream(void)
 {
@@ -37,6 +51,7 @@ void handle_jpg_stream(void)
 
     client.write((char *)cam.getfb(), cam.getSize());
     server.sendContent("\r\n");
+    displayFrameRate();
     if (!client.connected())
       break;
   }
@@ -129,6 +144,8 @@ void setup()
   server.onNotFound(handleNotFound);
   server.begin();
 }
+
+
 
 void loop()
 {
